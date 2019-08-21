@@ -418,7 +418,11 @@ class Quit(object):
                            default_graph=[], named_graph=[], queryType=None, comment=None):
         """Apply an update query on the graph and the git repository."""
         graph, commitid = self.instance(parent_commit_ref)
-        resultingChanges, exception = graph.update(parsedQuery)
+
+        ls = []
+        ls.append(parsedQuery)
+        ls.append(comment)
+        resultingChanges, exception = graph.update(ls)
         if exception:
             # TODO need to revert or invalidate the graph at this point.
             pass

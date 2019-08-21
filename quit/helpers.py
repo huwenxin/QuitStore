@@ -300,6 +300,7 @@ def parse_sparql_request(request):
     default_graph = []
     named_graph = []
     accept_header = None
+    parsedGraph = None
     comment = None
 
     if request.method == "GET":
@@ -337,9 +338,9 @@ def parse_sparql_request(request):
                 named_graph = request.args.getlist('named-graph-uri')
                 graph = request.args.get('graph')
                 data = request.data.decode("utf-8")
-                g = Graph()
-                g.parse(data=data, format='application/rdf+xml')
-                query = 'INSERT DATA { GRAPH <' + graph + '> { ' + g.serialize(format="nt").decode("utf-8") + ' } }'
+                parsedGraph = Graph('IOMemory', URIRef(graph))
+                parsedGraph.parse(data=data, format='application/rdf+xml')
+                #query = 'INSERT DATA { GRAPH <' + graph + '> { ' + g.serialize(format="nt").decode("utf-8") + ' } }'
                 type = 'update'
     elif request.method == "PUT":
         if 'Content-Type' in request.headers:
@@ -348,16 +349,17 @@ def parse_sparql_request(request):
         named_graph = request.args.getlist('named-graph-uri')
         graph = request.args.get('graph')
         data = request.input_stream.read()
-        g = Graph()
+        parsedGraph = Graph('IOMemory', URIRef(graph))
         if content_mimetype is not None:
-            g.parse(data=data, format=content_mimetype)
+            print("content type not none")
+            parsedGraph.parse(data=data, format=content_mimetype)
         else:
-            g.parse(data=data, format='application/rdf+xml')
-        query = 'WITH <' + graph + '> DELETE { ?s ?p ?o . } INSERT { ' + g.serialize(format="nt").decode("utf-8") + ' } WHERE { ?s ?p ?o .}'
+            parsedGraph.parse(data=data, format='application/rdf+xml')
+        #query = 'WITH <' + graph + '> DELETE { ?s ?p ?o . } INSERT { ' + g.serialize(format="nt").decode("utf-8") + ' } WHERE { ?s ?p ?o .}'
         type = 'update'
         comment = 'Replace'
 
-    return query, type, default_graph, named_graph, comment
+    return query, type, default_graph, named_graph, comment, parsedGraph
 
 
 def parse_named_graph_query(query):
@@ -390,11 +392,14 @@ def parse_named_graph_query(query):
             parsedFilter = Query.parseString(q, parseAll=True)[1].where.part[0]
             query[1].where.part.append(parsedFilter)
     else:
-        if 'graph' in query[1].where.part[0]:
+        if ('part' in query[1].where) and ('graph' not in query[1].where.part[0]):
             pass
-        else:
             graphValue = query[1].where
-            whereValue = CompValue('GroupGraphPatternSub', part=[CompValue('GraphGraphPattern', term=Variable('selfDefinedGraphVariable'), graph=graphValue)])
+            whereValue = CompValue('GroupGraphPatternSub', part=[
+                CompValue('GraphGraphPattern', term=Variable('selfDefinedGraphVariable'), graph=graphValue)])
             query[1].where = whereValue
+        else:
+            pass
+
 
     return query

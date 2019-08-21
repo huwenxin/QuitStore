@@ -431,7 +431,7 @@ def evalConstructQuery(ctx, query):
 
     graph = Graph()
 
-    for c in evalPart(ctx, query.p):
+    for c in evalPart(ctx, query.p.p):
         graph += _fillTemplate(template, c)
 
     res = {}
