@@ -99,7 +99,7 @@ def evalCreate(ctx, u):
         raise Exception("Graph %s already exists." % g.identifier)
     else:
         g = ctx.dataset.get_context(u.graphiri)
-        _append(res["delta"], u.identifier, 'additions', g)
+        _append(res["delta"], u.graphiri, 'additions', g)
 
     return res
 
@@ -312,8 +312,9 @@ def handleGraph(ctx, graph, comment):
         srcg = graph
         dstg = _graphOrDefault(ctx, graph.identifier)
 
-        removals = dstg
-        additions = srcg
+        _append(res["delta"], dstg.identifier, 'additions', srcg)
+        _append(res["delta"], dstg.identifier, 'removals', dstg)
+
         dstg.remove((None, None, None))
 
         dstg += srcg
@@ -323,13 +324,12 @@ def handleGraph(ctx, graph, comment):
         else:
             srcg.remove((None, None, None))
         _append(res["delta"], dstg.identifier, 'additions', additions)
-        _append(res["delta"], dstg.identifier, 'removals', removals)
     else:
         res["type"] = "ADD"
         srcg = graph
         dstg = _graphOrDefault(ctx, graph.identifier)
 
-        additions = srcg
+        _append(res["delta"], dstg.identifier, 'additions', srcg)
 
         dstg += srcg
 
@@ -337,7 +337,6 @@ def handleGraph(ctx, graph, comment):
             ctx.dataset.store.remove_graph(srcg)
         else:
             srcg.remove((None, None, None))
-        _append(res["delta"], dstg.identifier, 'additions', additions)
 
     return res
 
