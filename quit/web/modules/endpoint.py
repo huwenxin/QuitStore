@@ -146,7 +146,7 @@ def sparql(branch_or_ref):
             #print('namedGraph exists')
             #return make_response('FROM NAMED and USING NAMED not supported, yet', 400)
 
-        #special queries only for CMEM
+        #special queries only for CMEM, maybe also helpful as mechanism for fault tolerance later
         q = query
         num1 = q.count('SELECT DISTINCT  ?vocabulary')
         num3 = q.count('(COUNT(DISTINCT')
