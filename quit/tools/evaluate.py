@@ -431,7 +431,7 @@ def evalConstructQuery(ctx, query):
 
     graph = Graph()
 
-    for c in evalPart(ctx, query.p):
+    for c in evalPart(ctx, query.p.p):
         graph += _fillTemplate(template, c)
 
     res = {}
@@ -483,8 +483,8 @@ def evalQuery(graph, query, initBindings, base=None):
             # TODO re-enable original behaviour if FROM NAMED works with named graphs
             # https://github.com/AKSW/QuitStore/issues/144
             elif d.named:
-                raise FromNamedError
-            #     g = d.named
-            #     ctx.load(g, default=False)
+            #    raise FromNamedError
+                 g = d.named
+                 ctx.load(g, default=False)
 
     return evalPart(ctx, main)

@@ -33,8 +33,8 @@ rdfMimetypes = ['text/turtle', 'application/x-turtle', 'application/rdf+xml', 'a
                 'application/json']
 
 
-@endpoint.route("/sparql", defaults={'branch_or_ref': None}, methods=['POST', 'GET'])
-@endpoint.route("/sparql/<path:branch_or_ref>", methods=['POST', 'GET'])
+@endpoint.route("/sparql", defaults={'branch_or_ref': None}, methods=['POST', 'GET', 'PUT'])
+@endpoint.route("/sparql/<path:branch_or_ref>", methods=['POST', 'GET', 'PUT'])
 def sparql(branch_or_ref):
     """Process a SPARQL query (Select or Update).
 
@@ -51,19 +51,125 @@ def sparql(branch_or_ref):
 
     logger.debug("Request method: {}".format(request.method))
 
-    query, type, default_graph, named_graph = parse_sparql_request(request)
+    query, type, default_graph, named_graph, comment, parsedGraph = parse_sparql_request(request)
 
-    if query is None:
+    if (query is None) and (parsedGraph is None):
         if request.accept_mimetypes.best_match(['text/html']) == 'text/html':
             return render_template('sparql.html', current_ref=branch_or_ref or default_branch,
                                    mode='query')
         else:
             return make_response('No Query was specified or the Content-Type is not set according' +
                                  'to the SPARQL 1.1 standard', 400)
+    elif (query is None) and (parsedGraph is not None):
+
+        if branch_or_ref:
+            commit_id = quit.repository.revision(branch_or_ref).id
+        else:
+            commit_id = None
+
+        if comment:
+            msg = "Move graph data"
+        else:
+            msg = "Add graph data"
+
+        parent_commit_id = request.values.get('parent_commit_id', None) or None
+        if parent_commit_id and parent_commit_id != commit_id:
+            resolution_method = request.values.get('resolution_method', None) or None
+            if resolution_method == "reject":
+                logger.debug("rejecting update because {} is at {} but {} was expected".format(
+                             branch_or_ref, commit_id, parent_commit_id))
+                return make_response('reject', 409)  # alternative 412
+            elif resolution_method in ("merge", "branch"):
+                logger.debug(("writing update to a branch of {} because it is at {} but {} was "
+                             "expected").format(branch_or_ref, commit_id, parent_commit_id))
+                try:
+                    quit.repository.lookup(parent_commit_id)
+                except RevisionNotFound:
+                    return make_response("The provided parent commit (parent_commit_id={}) "
+                                         "could not be found.".format(parent_commit_id), 400)
+
+                time = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
+                shortUUID = (base64.urlsafe_b64encode(uuid.uuid1().bytes).decode("utf-8")
+                             ).rstrip('=\n').replace('/', '_')
+                target_branch = "tmp/{}_{}".format(time, shortUUID)
+                target_ref = "refs/heads/" + target_branch
+                logger.debug("target ref is: {}".format(target_ref))
+                print(len(parsedGraph))
+                oid = quit.applyQueryOnCommit(parsedGraph, parent_commit_id, target_ref,
+                                              query=msg + " into graph", default_graph=default_graph,
+                                              named_graph=named_graph, queryType=msg + " to", comment=comment)
+
+                if resolution_method == "merge":
+                    logger.debug(("going to merge update into {} because it is at {} but {} was "
+                                 "expected").format(branch_or_ref, commit_id, parent_commit_id))
+                    try:
+                        quit.repository.merge(target=branch_or_ref, branch=target_ref)
+                        oid = quit.repository.revision(branch_or_ref).id
+                        # delete temporary branch
+                        tmp_branch = quit.repository._repository.branches.get(target_branch)
+                        tmp_branch.delete()
+                        response = make_response('success', 200)
+                        target_branch = branch_or_ref
+                    except QuitMergeConflict as e:
+                        response = make_response('merge failed', 400)
+                else:
+                    response = make_response('branched', 200)
+                response.headers["X-CurrentBranch"] = target_branch
+                response.headers["X-CurrentCommit"] = oid
+                return response
+
+                # Add info about temporary branch
+        else:
+            graph, commitid = quit.instance(parent_commit_id)
+
+            target_head = request.values.get('target_head', branch_or_ref) or default_branch
+            target_ref = 'refs/heads/{}'.format(target_head)
+            try:
+
+                oid = quit.applyQueryOnCommit(parsedGraph, branch_or_ref, target_ref,
+                                              query=msg + " into graph", default_graph=default_graph,
+                                              named_graph=named_graph, queryType=msg + " to", comment=comment)
+                response = make_response('', 200)
+                response.headers["X-CurrentBranch"] = target_head
+                if oid is not None:
+                    response.headers["X-CurrentCommit"] = oid
+                else:
+                    response.headers["X-CurrentCommit"] = commitid
+                return response
+            except Exception as e:
+                # query ok, but unsupported query type or other problem during commit
+                logger.exception(e)
+                return make_response('Error after executing the update query.', 400)
     else:
         # TODO allow USING NAMED when fixed in rdflib
-        if len(named_graph) > 0:
-            return make_response('FROM NAMED and USING NAMED not supported, yet', 400)
+        #if len(named_graph) > 0:
+            #print('namedGraph exists')
+            #return make_response('FROM NAMED and USING NAMED not supported, yet', 400)
+
+        #special queries only for CMEM
+        q = query
+        num1 = q.count('SELECT DISTINCT  ?vocabulary')
+        num3 = q.count('(COUNT(DISTINCT')
+        strls1 = ['?description', '?modified', '?installed', '?_downloadUrl', '?_preferredNamespace', '?_namespacePrefix', '?_vocabulary_label']
+        strls2 = ['?numSchemes', '?numConcept', '?numNarrowerConcept', '?numRelation']
+        strls3 = ['CONSTRUCT', '?spci','?sourceDataset', '?targetDataset', '(iri(concat(\"https://eccenca.com/__bnode-like/\"', 'FILTER ( ?sourceDataset != ?targetDataset )']
+        if ("?vocabulary  a                  voaf:Vocabulary" in q) and (num1 > 1) and all(x in q for x in strls1):
+            x = q.split("{ { ")
+            query = x[0] + "{ ?vocabulary a voaf:Vocabulary {" + x[1]
+        elif all(x in q for x in strls2) and (num3 == 4):
+            x = q.split("{   {")
+            y = x[1].split("UNION")
+            query = x[0].replace("COUNT(DISTINCT ", "COUNT(") + "{ { SELECT DISTINCT ?numSchemes WHERE {" + y[0] + \
+                    "} UNION { SELECT DISTINCT ?numConcept WHERE " + y[1] + \
+                    "} UNION { SELECT DISTINCT ?numNarrowerConcept WHERE " + y[2] + \
+                    "} UNION { SELECT DISTINCT ?numRelation WHERE " + y[3] + "}"
+        elif all(x in q for x in strls3):
+            x = q.split("concat(\"https://eccenca.com/__bnode-like/\", str(?sourceDataset), str(?targetDataset))")
+            y = x[1].split("FILTER ( ?sourceDataset != ?targetDataset )")
+            query = x[0] + "?iri" + y[0] + " FILTER ( ?sourceDataset != ?targetDataset ) " \
+                                           " BIND ( COALESCE(?sourceDataset, \"\") As ?sourceDataset1) " \
+                                           " BIND ( COALESCE(?targetDataset, \"\") As ?targetDataset1) " \
+                                           " BIND (CONCAT(\"https://eccenca.com/__bnode-like/\", ?sourceDataset1, ?targetDataset1) as ?iri) " + y[1]
 
         parse_type = getattr(helpers, 'parse_' + type + '_type')
 
@@ -77,7 +183,7 @@ def sparql(branch_or_ref):
         except SparqlProtocolError:
             return make_response('Sparql Protocol Error', 400)
 
-    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load']:
+    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load', 'Drop', 'Create']:
         if branch_or_ref:
             commit_id = quit.repository.revision(branch_or_ref).id
         else:
@@ -107,7 +213,7 @@ def sparql(branch_or_ref):
                 logger.debug("target ref is: {}".format(target_ref))
                 oid = quit.applyQueryOnCommit(parsedQuery, parent_commit_id, target_ref,
                                               query=query, default_graph=default_graph,
-                                              named_graph=named_graph)
+                                              named_graph=named_graph, queryType=queryType, comment=comment)
 
                 if resolution_method == "merge":
                     logger.debug(("going to merge update into {} because it is at {} but {} was "
@@ -137,7 +243,7 @@ def sparql(branch_or_ref):
             try:
                 oid = quit.applyQueryOnCommit(parsedQuery, branch_or_ref, target_ref,
                                               query=query, default_graph=default_graph,
-                                              named_graph=named_graph)
+                                              named_graph=named_graph, queryType=queryType, comment=comment)
                 response = make_response('', 200)
                 response.headers["X-CurrentBranch"] = target_head
                 if oid is not None:

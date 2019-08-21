@@ -11,10 +11,13 @@ class SPARQLUpdateProcessor(UpdateProcessor):
         self.graph = graph
 
     def update(self, strOrQuery, initBindings={}, initNs={}):
+        if isinstance(strOrQuery, list):
+            comment = strOrQuery[1]
+            strOrQuery = strOrQuery[0]
         if isinstance(strOrQuery, str):
             strOrQuery=translateUpdate(parseUpdate(strOrQuery), initNs=initNs)
 
-        return evalUpdate(self.graph, strOrQuery, initBindings)
+        return evalUpdate(self.graph, strOrQuery, initBindings, comment)
 
 
 class SPARQLProcessor(Processor):

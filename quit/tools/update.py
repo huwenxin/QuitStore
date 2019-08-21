@@ -91,10 +91,18 @@ def evalCreate(ctx, u):
     """
     http://www.w3.org/TR/sparql11-update/#create
     """
-    g = ctx.datset.get_context(u.graphiri)
+    res = {}
+    res["type"] = "CREATE"
+    res["delta"] = {}
+
+    g = ctx.dataset.get_context(u.graphiri)
     if len(g) > 0:
         raise Exception("Graph %s already exists." % g.identifier)
-    raise Exception("Create not implemented!")
+    else:
+        g = ctx.dataset.get_context(u.graphiri)
+        _append(res["delta"], u.identifier, 'additions', g)
+
+    return res
 
 
 def evalClear(ctx, u):
@@ -109,11 +117,20 @@ def evalDrop(ctx, u):
     """
     http://www.w3.org/TR/sparql11-update/#drop
     """
+
+    res = {}
+    res["type"] = "DROP"
+    res["delta"] = {}
+
     if ctx.dataset.store.graph_aware:
         for g in _graphAll(ctx, u.graphiri):
+            _append(res["delta"], u.graphiri, 'removals', g)
             ctx.dataset.store.remove_graph(g)
     else:
+        _append(res["delta"], u.graphiri, 'removals', list(u.triples))
         evalClear(ctx, u)
+
+    return res
 
 
 def evalInsertData(ctx, u):
@@ -284,6 +301,45 @@ def evalModify(ctx, u):
     return res
 
 
+def handleGraph(ctx, graph, comment):
+    res = {}
+    res["delta"] = {}
+
+    if comment == "Replace":
+        res["type"] = "MOVE"
+        srcg = graph
+        dstg = _graphOrDefault(ctx, graph.identifier)
+
+        removals = dstg
+        additions = srcg
+        dstg.remove((None, None, None))
+
+        dstg += srcg
+
+        if ctx.dataset.store.graph_aware:
+            ctx.dataset.store.remove_graph(srcg)
+        else:
+            srcg.remove((None, None, None))
+        _append(res["delta"], dstg.identifier, 'additions', additions)
+        _append(res["delta"], dstg.identifier, 'removals', removals)
+    else:
+        res["type"] = "ADD"
+        srcg = graph
+        dstg = _graphOrDefault(ctx, graph.identifier)
+
+        additions = srcg
+
+        dstg += srcg
+
+        if ctx.dataset.store.graph_aware:
+            ctx.dataset.store.remove_graph(srcg)
+        else:
+            srcg.remove((None, None, None))
+        _append(res["delta"], dstg.identifier, 'additions', additions)
+
+    return res
+
+
 def evalAdd(ctx, u):
     """
 
@@ -350,7 +406,7 @@ def evalCopy(ctx, u):
     dstg += srcg
 
 
-def evalUpdate(graph, update, initBindings=None, actionLog=False):
+def evalUpdate(graph, update, initBindings={}, actionLog=False, comment=None):
     """
     http://www.w3.org/TR/sparql11-update/#updateLanguage
 
@@ -371,55 +427,69 @@ def evalUpdate(graph, update, initBindings=None, actionLog=False):
 
     res = []
 
-    for u in update:
-
+    if isinstance(update, Graph):
         ctx = QueryContext(graph)
-        ctx.prologue = u.prologue
+        if ctx.initBindings is None:
+            ctx.initBindings = initBindings
 
-        if initBindings:
-            for k, v in initBindings.items():
-                if not isinstance(k, Variable):
-                    k = Variable(k)
-                ctx[k] = v
+        result = handleGraph(ctx, update, comment)
+        if result:
+            res.append(result)
+    else:
+        for u in update:
+            ctx = QueryContext(graph)
+            ctx.prologue = u.prologue
+            if ctx.initBindings is None:
+                ctx.initBindings = initBindings
+            if initBindings:
+                for k, v in initBindings.items():
+                    if not isinstance(k, Variable):
+                        k = Variable(k)
+                    ctx[k] = v
 
-        try:
-            if u.name == 'Load':
-                result = evalLoad(ctx, u)
-                if result:
-                    res.append(result)
-            elif u.name == 'Clear':
-                evalClear(ctx, u)
-            elif u.name == 'Drop':
-                evalDrop(ctx, u)
-            elif u.name == 'Create':
-                evalCreate(ctx, u)
-            elif u.name == 'Add':
-                evalAdd(ctx, u)
-            elif u.name == 'Move':
-                evalMove(ctx, u)
-            elif u.name == 'Copy':
-                evalCopy(ctx, u)
-            elif u.name == 'InsertData':
-                result = evalInsertData(ctx, u)
-                if result:
-                    res.append(result)
-            elif u.name == 'DeleteData':
-                result = evalDeleteData(ctx, u)
-                if result:
-                    res.append(result)
-            elif u.name == 'DeleteWhere':
-                result = evalDeleteWhere(ctx, u)
-                if result:
-                    res.append(result)
-            elif u.name == 'Modify':
-                result = evalModify(ctx, u)
-                if result:
-                    res.append(result)
-            else:
-                raise Exception('Unknown update operation: %s' % (u,))
-        except UnSupportedQuery as e:
-            return res, e
-        except Exception:
-            if not u.silent:
-                raise
+            try:
+                if u.name == 'Load':
+                    result = evalLoad(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'Clear':
+                    evalClear(ctx, u)
+                elif u.name == 'Drop':
+                    result = evalDrop(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'Create':
+                    result = evalCreate(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'Add':
+                    evalAdd(ctx, u)
+                elif u.name == 'Move':
+                    evalMove(ctx, u)
+                elif u.name == 'Copy':
+                    evalCopy(ctx, u)
+                elif u.name == 'InsertData':
+                    result = evalInsertData(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'DeleteData':
+                    result = evalDeleteData(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'DeleteWhere':
+                    result = evalDeleteWhere(ctx, u)
+                    if result:
+                        res.append(result)
+                elif u.name == 'Modify':
+                    result = evalModify(ctx, u)
+                    if result:
+                        res.append(result)
+                else:
+                    raise Exception('Unknown update operation: %s' % (u,))
+            except UnSupportedQuery as e:
+                return res, e
+            except Exception:
+                if not u.silent:
+                    raise
+
     return res, None
