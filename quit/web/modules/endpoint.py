@@ -157,7 +157,7 @@ def sparql(branch_or_ref):
         except SparqlProtocolError:
             return make_response('Sparql Protocol Error', 400)
 
-    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load', 'Drop', 'Create']:
+    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load', 'Drop', 'Create', 'Clear']:
         if branch_or_ref:
             commit_id = quit.repository.revision(branch_or_ref).id
         else:
