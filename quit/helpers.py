@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-import cgi
+
 import logging
 import os
-from pprint import pprint
+
 from xml.dom.minidom import parse
 
-import uwsgi
 from pyparsing import ParseException
 from rdflib import Graph
-from werkzeug.wsgi import make_chunk_iter
 
 from quit.exceptions import UnSupportedQuery, SparqlProtocolError, NonAbsoluteBaseError
 from rdflib.term import URIRef, Variable
 from rdflib.plugins.sparql.parserutils import CompValue, plist
 from rdflib.plugins.sparql.parser import parseQuery, parseUpdate, Query
-from quit.tools.algebra import translateQuery, translateUpdate, pprintAlgebra
+from quit.tools.algebra import translateQuery, translateUpdate
 from rdflib.plugins.serializers.nt import _nt_row as _nt
 from rdflib.plugins.sparql import parser, algebra
 from rdflib.plugins import sparql
@@ -351,7 +349,6 @@ def parse_sparql_request(request):
         data = request.input_stream.read()
         parsedGraph = Graph('IOMemory', URIRef(graph))
         if content_mimetype is not None:
-            print("content type not none")
             parsedGraph.parse(data=data, format=content_mimetype)
         else:
             parsedGraph.parse(data=data, format='application/rdf+xml')
@@ -393,7 +390,6 @@ def parse_named_graph_query(query):
             query[1].where.part.append(parsedFilter)
     else:
         if ('part' in query[1].where) and ('graph' not in query[1].where.part[0]):
-            pass
             graphValue = query[1].where
             whereValue = CompValue('GroupGraphPatternSub', part=[
                 CompValue('GraphGraphPattern', term=Variable('selfDefinedGraphVariable'), graph=graphValue)])

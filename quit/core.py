@@ -506,6 +506,7 @@ class Quit(object):
         known_files = graphconfig.getfiles().keys()
 
         blobs_new = self._applyKnownGraphs(delta, blobs, parent_commit, index, graphconfig)
+
         new_contexts = self._applyUnknownGraphs(delta, known_files)
         new_config = copy(graphconfig)
 
@@ -575,12 +576,14 @@ class Quit(object):
 
             try:
                 file_reference, context = self.getFileReferenceAndContext(blob, parent_commit)
+
                 for entry in delta:
 
                     changeset = entry['delta'].get(context.identifier, None)
 
                     if changeset:
                         type = entry['type']
+
                         if type == 'DROP':
                             index.remove(file_reference.path)
                             index.remove(file_reference.path + '.graph')

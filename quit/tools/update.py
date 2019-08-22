@@ -17,7 +17,7 @@ from itertools import tee
 from quit.exceptions import UnSupportedQuery
 
 def _append(dct, identifier, action, items):
-    if items:
+    if items or isinstance(items, Graph):
         if not isinstance(identifier, Node):
             identifier = URIRef(identifier)
         changes = dct.get(identifier, [])
@@ -94,11 +94,13 @@ def evalCreate(ctx, u):
     res = {}
     res["type"] = "CREATE"
     res["delta"] = {}
+
     g = ctx.dataset.get_context(u.graphiri)
+
     if len(g) > 0:
         raise Exception("Graph %s already exists." % g.identifier)
     else:
-        g = ctx.dataset.get_context(u.graphiri)
+        ctx.dataset.store.add_graph(g)
         _append(res["delta"], u.graphiri, 'additions', g)
 
     return res
@@ -125,8 +127,7 @@ def evalDrop(ctx, u):
         for g in _graphAll(ctx, u.graphiri):
             _append(res["delta"], u.graphiri, 'removals', g)
             ctx.dataset.store.remove_graph(g)
-            #graph = ctx.dataset.get_context(u.graphiri)
-            #graph -= g
+
     else:
         for g in _graphAll(ctx, u.graphiri):
             _append(res["delta"], u.graphiri, 'removals', g)
@@ -309,34 +310,30 @@ def handleGraph(ctx, graph, comment):
 
     if comment == "Replace":
         res["type"] = "MOVE"
-        srcg = graph
-        dstg = _graphOrDefault(ctx, graph.identifier)
+        dstg = ctx.dataset.get_context(graph.identifier)
 
-        _append(res["delta"], dstg.identifier, 'additions', srcg)
-        _append(res["delta"], dstg.identifier, 'removals', dstg)
+        removedg = list(dstg.triples((None, None, None)))
+        if removedg:
+            _append(res["delta"], dstg.identifier, 'removals', removedg)
+            dstg -= removedg
 
-        dstg.remove((None, None, None))
+        filledg = list(graph.triples((None, None, None)))
+        if filledg:
+            _append(res["delta"], dstg.identifier, 'additions', list(graph.triples((None, None, None))))
+            dstg += filledg
 
-        dstg += srcg
+        graph.remove((None, None, None))
 
-        if ctx.dataset.store.graph_aware:
-            ctx.dataset.store.remove_graph(srcg)
-        else:
-            srcg.remove((None, None, None))
-        _append(res["delta"], dstg.identifier, 'additions', additions)
     else:
         res["type"] = "ADD"
-        srcg = graph
-        dstg = _graphOrDefault(ctx, graph.identifier)
+        dstg = ctx.dataset.get_context(graph.identifier)
 
-        _append(res["delta"], dstg.identifier, 'additions', srcg)
+        filledg = list(filter(lambda triple: triple not in dstg, graph.triples((None, None, None))))
+        if filledg:
+            _append(res["delta"], dstg.identifier, 'additions', filledg)
+            dstg += filledg
 
-        dstg += srcg
-
-        if ctx.dataset.store.graph_aware:
-            ctx.dataset.store.remove_graph(srcg)
-        else:
-            srcg.remove((None, None, None))
+            graph.remove((None, None, None))
 
     return res
 

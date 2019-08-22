@@ -16,7 +16,7 @@ also return a dict of list of dicts
 
 import collections
 
-from rdflib import Variable, Graph, BNode, URIRef, Literal
+from rdflib import Variable, Graph, BNode
 from six import iteritems, itervalues
 
 from rdflib.plugins.sparql import CUSTOM_EVALS
