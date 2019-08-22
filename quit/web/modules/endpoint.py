@@ -146,45 +146,6 @@ def sparql(branch_or_ref):
             #print('namedGraph exists')
             #return make_response('FROM NAMED and USING NAMED not supported, yet', 400)
 
-        #special queries only for CMEM
-        q = query
-        num1 = q.count('SELECT ')
-        num3 = q.count('(COUNT(DISTINCT')
-        strls1 = ['?description', 'OPTIONAL', 'FILTER', 'LIMIT   10', 'OFFSET  0']
-        strls1_1 = ['?vocabulary  a                  voaf:Vocabulary',
-                    '?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset>',
-                    '?thesaurus  a                   <https://vocab.eccenca.com/dsm/ThesaurusProject>']
-        strls2 = ['?numSchemes', '?numConcept', '?numNarrowerConcept', '?numRelation']
-        strls3 = ['CONSTRUCT', '?spci','?sourceDataset', '?targetDataset', '(iri(concat(\"https://eccenca.com/__bnode-like/\"', 'FILTER ( ?sourceDataset != ?targetDataset )']
-        if any(x in q for x in strls1_1) and (num1 == 2) and all(x in q for x in strls1):
-            print("search")
-            x = q.split("{ { ")
-            if ('SELECT DISTINCT  ?vocabulary' in q) and ('?vocabulary  a                  voaf:Vocabulary' in q):
-                query = x[0] + "{ ?vocabulary a voaf:Vocabulary {" + x[1]
-            elif ('SELECT DISTINCT  ?thesaurus' in q) and ('?thesaurus  a                   <https://vocab.eccenca.com/dsm/ThesaurusProject>' in q):
-                query = x[0] + "{ ?thesaurus  a  <https://vocab.eccenca.com/dsm/ThesaurusProject> {" + x[1]
-            elif ('SELECT DISTINCT  ?dataset' in q) and ('?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset>' in q):
-                if ('HAVING bound(?dataset)' in x[1]):
-                    x[1] = x[1].replace('HAVING bound(?dataset)', '')
-                query = x[0] + "{ ?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset> {" + x[1]
-
-        elif all(x in q for x in strls2) and (num3 == 4):
-            print("count distinct")
-            x = q.split("{   {")
-            y = x[1].split("UNION")
-            query = x[0].replace("COUNT(DISTINCT ", "COUNT(") + "{ { SELECT DISTINCT ?numSchemes WHERE {" + y[0] + \
-                    "} UNION { SELECT DISTINCT ?numConcept WHERE " + y[1] + \
-                    "} UNION { SELECT DISTINCT ?numNarrowerConcept WHERE " + y[2] + \
-                    "} UNION { SELECT DISTINCT ?numRelation WHERE " + y[3] + "}"
-        elif all(x in q for x in strls3):
-            print("construct query")
-            x = q.split("concat(\"https://eccenca.com/__bnode-like/\", str(?sourceDataset), str(?targetDataset))")
-            y = x[1].split("FILTER ( ?sourceDataset != ?targetDataset )")
-            query = x[0] + "?iri" + y[0] + " FILTER ( ?sourceDataset != ?targetDataset ) " \
-                                           " BIND ( COALESCE(?sourceDataset, \"\") As ?sourceDataset1) " \
-                                           " BIND ( COALESCE(?targetDataset, \"\") As ?targetDataset1) " \
-                                           " BIND (CONCAT(\"https://eccenca.com/__bnode-like/\", ?sourceDataset1, ?targetDataset1) as ?iri) " + y[1]
-
         parse_type = getattr(helpers, 'parse_' + type + '_type')
 
 
@@ -198,7 +159,7 @@ def sparql(branch_or_ref):
         except SparqlProtocolError:
             return make_response('Sparql Protocol Error', 400)
 
-    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load', 'Drop', 'Create']:
+    if queryType in ['InsertData', 'DeleteData', 'Modify', 'DeleteWhere', 'Load', 'Drop', 'Create', 'Clear']:
         if branch_or_ref:
             commit_id = quit.repository.revision(branch_or_ref).id
         else:
