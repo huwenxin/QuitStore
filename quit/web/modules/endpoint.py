@@ -94,7 +94,6 @@ def sparql(branch_or_ref):
                 target_branch = "tmp/{}_{}".format(time, shortUUID)
                 target_ref = "refs/heads/" + target_branch
                 logger.debug("target ref is: {}".format(target_ref))
-                print(len(parsedGraph))
                 oid = quit.applyQueryOnCommit(parsedGraph, parent_commit_id, target_ref,
                                               query=msg + " into graph", default_graph=default_graph,
                                               named_graph=named_graph, queryType=msg + " to", comment=comment)
@@ -146,18 +145,30 @@ def sparql(branch_or_ref):
             #print('namedGraph exists')
             #return make_response('FROM NAMED and USING NAMED not supported, yet', 400)
 
-        #special queries handling only for CMEM, errors appear rather because of the queries from CMEM
-        #maybe also interesting for QuitStore as mechanism for fault tolerance later
+        #special queries only for CMEM
         q = query
-        num1 = q.count('SELECT DISTINCT  ?vocabulary')
+        num1 = q.count('SELECT ')
         num3 = q.count('(COUNT(DISTINCT')
-        strls1 = ['?description', '?modified', '?installed', '?_downloadUrl', '?_preferredNamespace', '?_namespacePrefix', '?_vocabulary_label']
+        strls1 = ['?description', 'OPTIONAL', 'FILTER', 'LIMIT   10', 'OFFSET  0']
+        strls1_1 = ['?vocabulary  a                  voaf:Vocabulary',
+                    '?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset>',
+                    '?thesaurus  a                   <https://vocab.eccenca.com/dsm/ThesaurusProject>']
         strls2 = ['?numSchemes', '?numConcept', '?numNarrowerConcept', '?numRelation']
         strls3 = ['CONSTRUCT', '?spci','?sourceDataset', '?targetDataset', '(iri(concat(\"https://eccenca.com/__bnode-like/\"', 'FILTER ( ?sourceDataset != ?targetDataset )']
-        if ("?vocabulary  a                  voaf:Vocabulary" in q) and (num1 > 1) and all(x in q for x in strls1):
+        if any(x in q for x in strls1_1) and (num1 == 2) and all(x in q for x in strls1):
+            print("search")
             x = q.split("{ { ")
-            query = x[0] + "{ ?vocabulary a voaf:Vocabulary {" + x[1]
+            if ('SELECT DISTINCT  ?vocabulary' in q) and ('?vocabulary  a                  voaf:Vocabulary' in q):
+                query = x[0] + "{ ?vocabulary a voaf:Vocabulary {" + x[1]
+            elif ('SELECT DISTINCT  ?thesaurus' in q) and ('?thesaurus  a                   <https://vocab.eccenca.com/dsm/ThesaurusProject>' in q):
+                query = x[0] + "{ ?thesaurus  a  <https://vocab.eccenca.com/dsm/ThesaurusProject> {" + x[1]
+            elif ('SELECT DISTINCT  ?dataset' in q) and ('?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset>' in q):
+                if ('HAVING bound(?dataset)' in x[1]):
+                    x[1] = x[1].replace('HAVING bound(?dataset)', '')
+                query = x[0] + "{ ?dataset  a                     <https://vocab.eccenca.com/dsm/Dataset> {" + x[1]
+
         elif all(x in q for x in strls2) and (num3 == 4):
+            print("count distinct")
             x = q.split("{   {")
             y = x[1].split("UNION")
             query = x[0].replace("COUNT(DISTINCT ", "COUNT(") + "{ { SELECT DISTINCT ?numSchemes WHERE {" + y[0] + \
@@ -165,6 +176,7 @@ def sparql(branch_or_ref):
                     "} UNION { SELECT DISTINCT ?numNarrowerConcept WHERE " + y[2] + \
                     "} UNION { SELECT DISTINCT ?numRelation WHERE " + y[3] + "}"
         elif all(x in q for x in strls3):
+            print("construct query")
             x = q.split("concat(\"https://eccenca.com/__bnode-like/\", str(?sourceDataset), str(?targetDataset))")
             y = x[1].split("FILTER ( ?sourceDataset != ?targetDataset )")
             query = x[0] + "?iri" + y[0] + " FILTER ( ?sourceDataset != ?targetDataset ) " \

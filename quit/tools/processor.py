@@ -17,7 +17,7 @@ class SPARQLUpdateProcessor(UpdateProcessor):
         if isinstance(strOrQuery, str):
             strOrQuery=translateUpdate(parseUpdate(strOrQuery), initNs=initNs)
 
-        return evalUpdate(self.graph, strOrQuery, initBindings, comment)
+        return evalUpdate(self.graph, strOrQuery, initBindings, comment=comment)
 
 
 class SPARQLProcessor(Processor):

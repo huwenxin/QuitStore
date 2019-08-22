@@ -428,9 +428,6 @@ class Quit(object):
             pass
 
         graphuri = None
-        print(resultingChanges)
-        print("comment: ")
-        print(comment)
 
         if comment is not None:
             queryType = comment
@@ -508,7 +505,8 @@ class Quit(object):
         graphconfig = self._graphconfigs.get(parent_commit_id)
         known_files = graphconfig.getfiles().keys()
 
-        blobs_new = self._applyKnownGraphs(delta, blobs, parent_commit, index)
+        blobs_new = self._applyKnownGraphs(delta, blobs, parent_commit, index, graphconfig)
+
         new_contexts = self._applyUnknownGraphs(delta, known_files)
         new_config = copy(graphconfig)
 
@@ -578,16 +576,14 @@ class Quit(object):
 
             try:
                 file_reference, context = self.getFileReferenceAndContext(blob, parent_commit)
-                print(file_reference)
-                print(context.identifier)
+
                 for entry in delta:
 
                     changeset = entry['delta'].get(context.identifier, None)
 
                     if changeset:
                         type = entry['type']
-                        print("type: ")
-                        print(type)
+
                         if type == 'DROP':
                             index.remove(file_reference.path)
                             index.remove(file_reference.path + '.graph')
@@ -605,9 +601,7 @@ class Quit(object):
                     index.add(file_reference.path, file_reference.content)
                     blob = fileName, index.stash[file_reference.path][0]
                     self._blobs.set(blob, (file_reference, context))
-                    print("addToNew")
                     blobs_new.add(blob)
-                    print(blobs_new)
 
             except KeyError:
                 pass
