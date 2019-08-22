@@ -110,8 +110,17 @@ def evalClear(ctx, u):
     """
     http://www.w3.org/TR/sparql11-update/#clear
     """
-    for g in _graphAll(ctx, u.graphiri):
-        g.remove((None, None, None))
+     res = {}
+    res["type"] = "CLEAR"
+    res["delta"] = {}
+
+    cg = ctx.dataset.get_context(u.graphiri)
+    removedg = list(cg.triples((None, None, None)))
+    if removedg:
+        _append(res["delta"], u.graphiri, 'removals', removedg)
+        cg -= removedg
+
+    return res
 
 
 def evalDrop(ctx, u):
@@ -451,7 +460,9 @@ def evalUpdate(graph, update, initBindings={}, actionLog=False, comment=None):
                     if result:
                         res.append(result)
                 elif u.name == 'Clear':
-                    evalClear(ctx, u)
+                    result = evalClear(ctx, u)
+                    if result:
+                        res.append(result)
                 elif u.name == 'Drop':
                     result = evalDrop(ctx, u)
                     if result:
